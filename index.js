@@ -12,14 +12,14 @@ async function setAccounts() {
     const lines = data.split(/\r?\n/);
 
     ac = []
-    await lines.forEach((line) => {
+    lines.forEach((line) => {
         if (line.length > 1) {
             ac.push({
                 email: line.split(':')[0],
                 pass: line.split(':')[1]
             })
         }
-    });
+    })
     return ac
 }
 
@@ -27,7 +27,6 @@ async function auth(accs) {
     auth = []
     const httpsAgent = new https.Agent({ name: "Minecraft", version: 1 });
     console.log()
-    console.log(`+――――――――――――――――――――――――――――――――――――――――+`)
     await accs.forEach(async ac => {
         options = {
             method: `POST`,
@@ -103,22 +102,24 @@ async function init() {
     //if (time.status != 200) return console.log(`Time API Unavailable, time offset unknown`)
     //console.log(`You have a time offset of: ${Date.now() - Date(time.data.datetime)}ms`)
 
-    var accs = await setAccounts(accs)
-    accs.length > 20 ? accs.length = 20 : ''
-    const ign = await readlineSync.question(`What IGN would you like to snipe?\n> `);
-    if (!ign.match(/\w{3,16}/g)) return console.log(`${ign} is not a valid username`);
+    setAccounts().then(accs => {
+        accs.length > 20 ? accs.length = 20 : ''
 
-    const delay = await readlineSync.question(`What delay would you like to have in ms?\n> `);
-    if (!parseInt(delay) || parseInt(delay) < 0) return console.log(`Couldn't read that delay`)
+        const ign = readlineSync.question(`What IGN would you like to snipe?\n> `);
+        if (!ign.match(/\w{3,16}/g)) return console.log(`${ign} is not a valid username`);
 
-    var auths = await auth(accs)
-    const snipeTime = await getTime(ign)
-    await snipeTime ? console.log(`Sniping ${ign} in ${moment().to(snipeTime, true)}`) : null
+        const delay = readlineSync.question(`What delay would you like to have in ms?\n> `);
+        if (!parseInt(delay) || parseInt(delay) < 0) return console.log(`Couldn't read that delay`)
 
-    await auths.forEach(au => {
-        au.reauth = ((snipeTime.valueOf() - au.date) > 50000) ? true : false
+        getTime(ign).then(snipeTime => {
+            auth(accs).then(async auths => {
+                await auths.forEach(au => {
+                    au.reauth = ((snipeTime.valueOf() - au.date) > 50000) ? true : false
+                })
+                snipeTime ? console.log(`Sniping ${ign} in ${moment().to(snipeTime, true)}`) : null
+                return
+            })
+        })
     })
-
-    return console.log(auths)
 }
 init()
