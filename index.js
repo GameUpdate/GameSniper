@@ -7,14 +7,6 @@ const https = require(`https`);
 const cheerio = require(`cheerio`);
 const moment = require(`moment`)
 
-function sleep(milliseconds) {
-    const date = Date.now();
-    let currentDate = null;
-    do {
-        currentDate = Date.now();
-    } while (currentDate - date < milliseconds);
-}
-
 async function setAccounts() {
     const data = fs.readFileSync('accounts.txt', 'UTF-8');
     const lines = data.split(/\r?\n/);
@@ -83,15 +75,15 @@ async function preSnipe(auths) {
         }
         setTimeout(async function () {
             console.log(`Attempting to snipe`)
-            for (let i = 0; i < 10; i++) snipe(auth);
+            for (let i = 0; i < 10; i++) { for (let j = 0; j < auths.length; j++) snipe(auths[j]) }
         }, (snipeTime.valueOf() - Date.now() - max - 10));
     })
 }
 
-async function snipe(auth) {
+async function snipe(au) {
     options = {
         method: `POST`,
-        headers: { "Authorization": auth.token },
+        headers: { "Authorization": au.token },
     }
     fetch(`https://api.mojang.com/user/profile/${uuid}/name`, options)
         .then(function (response) {
@@ -112,7 +104,7 @@ async function init() {
     //console.log(`You have a time offset of: ${Date.now() - Date(time.data.datetime)}ms`)
 
     var accs = await setAccounts(accs)
-    accs.length > 30 ? accs.length = 30 : ''
+    accs.length > 20 ? accs.length = 20 : ''
     const ign = await readlineSync.question(`What IGN would you like to snipe?\n> `);
     if (!ign.match(/\w{3,16}/g)) return console.log(`${ign} is not a valid username`);
 
