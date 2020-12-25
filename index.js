@@ -43,7 +43,7 @@ async function auth(accs) {
                 console.log(`Could not log into: ${ac.email}`);
             } else {
                 info = await au.json()
-                let inf = { token: info.accessToken, client: info.clientToken, date: Date.now(), reauth: false }
+                let inf = { email: ac.email, token: info.accessToken, client: info.clientToken, date: Date.now(), reauth: false }
                 if (val(inf)) {
                     options = {
                         headers: { "Authorization": `Bearer ${info.accessToken}` },
@@ -92,26 +92,37 @@ async function getTime(name) {
 
 async function preSnipe(auths) {
     console.log()
-    console.log(`Sniping in 30s....`)
-    await ping() ? console.log(`Current latency: ${await ping()}ms`) : ''
-    await sleep(snipeTime.valueOf() - Date.now() - delay - 10)
-    console.log(`Attempting to snipe`)
-    for (let i = 0; i < 3; i++) snipe(auths)
+    let pi = await ping()
+    pi ? console.log(`Current latency: ${pi}ms`) : ''
+    pi ? '' : pi = 0
+    console.log(`Starting to snipe at ${moment(new Date(snipeTime.valueOf() - delay)).format(`HH[:]mm[:]ss[.]SSS`)} in ${(snipeTime.valueOf() - Date.now() - delay) / 1000} seconds`)
+    await sleep(snipeTime.valueOf() - Date.now() - delay - pi)
+    console.log()
+    while (Date.now() < (snipeTime.valueOf() - delay - pi)) {
+        for (let i = 0; i < 3; i++) snipe(auths)
+        break
+    }
+    return
 }
 
 async function snipe(au) {
     au.forEach(ac => {
         options = {
             method: `POST`,
-            headers: { "Authorization": `Bearer ${ac.token}` },
+            headers: {
+                "Authorization": `Bearer ${ac.token}`,
+                "Content-Type": "application/json"
+            }
         }
-        console.log(ac.client)
         fetch(`https://api.minecraftservices.com/minecraft/profile/name/${ign}`, options)
             .then(async resp => {
                 info = await resp.json()
-                console.log(resp.status)
+                if (resp.status === 200) {
+                    console.log(`Name sniped! Email used: ${ac.email}`)
+                } else {
+                    resp.status != 429 ? console.log(`Failed snipe at ${moment(new Date()).format(`HH[:]mm[:]ss[.]SSS`)}`) : process.exit()
+                }
             })
-        sleep(10)
     })
 }
 
@@ -128,6 +139,7 @@ async function init() {
     }
 
     global.accs = await setAccounts()
+    if (accs.length > 20) { console.log(`More than 20 accounts was found, reducing to 20...`); console.log() }
     accs.length > 20 ? accs.length = 20 : ''
 
     global.ign = readlineSync.question(`What IGN would you like to snipe?\n> `);
