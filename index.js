@@ -38,13 +38,12 @@ async function auth(accs) {
             body: JSON.stringify({ username: ac.email, password: ac.pass }),
             agent: httpsAgent
         }
-
         fetch('https://authserver.mojang.com/authenticate', options).then(async au => {
             if (au.status != 200) {
                 console.log(`Could not log into: ${ac.email}`);
             } else {
                 info = await au.json()
-                inf = { token: info.accessToken, client: info.clientToken, date: Date.now(), reauth: false }
+                let inf = { token: info.accessToken, client: info.clientToken, date: Date.now(), reauth: false }
                 if (val(inf)) {
                     options = {
                         headers: { "Authorization": `Bearer ${info.accessToken}` },
@@ -73,6 +72,15 @@ async function val(info) {
     return true
 }
 
+async function ping() {
+    const before = new Date();
+    const req = await fetch("https://api.mojang.com/");
+    const after = new Date();
+
+    if (req.status != 200) return null;
+    return (after - before);
+}
+
 async function getTime(name) {
     const $ = cheerio.load(await fetch(`https://namemc.com/search?q=${name}`).then(r => r.text()));
 
@@ -83,38 +91,41 @@ async function getTime(name) {
 }
 
 async function preSnipe(auths) {
+    console.log()
     console.log(`Sniping in 30s....`)
-    const re = auths.filter(a => a.reauth)
-    if(re.length > 0) await auth(accs)
+    await ping() ? console.log(`Current latency: ${await ping()}ms`) : ''
     await sleep(snipeTime.valueOf() - Date.now() - delay - 10)
     console.log(`Attempting to snipe`)
-    console.log(auths.length)
-    for (let i = 0; i < 10; i++) { for (let j = 0; j < auths.length; j++) snipe(auths[j]) }
+    for (let i = 0; i < 3; i++) snipe(auths)
 }
 
 async function snipe(au) {
-    options = {
-        method: `POST`,
-        headers: { "Authorization": `Bearer ${au.token}` },
-    }
-    console.log(`sniping`)
-    fetch(`https://api.minecraftservices.com/minecraft/profile/name/${ign}`, options)
-        .then(function (response) {
-            logger.info("Name sniped.")
-            console.log(response.data);
-            process.exit();
-        }).catch(function (error) {
-            logger.warn("Snipe failed! at " + (snipeTime - Date.now()) + "ms");
-            console.log(error.response.data);
-        });
+    au.forEach(ac => {
+        options = {
+            method: `POST`,
+            headers: { "Authorization": `Bearer ${ac.token}` },
+        }
+        console.log(ac.client)
+        fetch(`https://api.minecraftservices.com/minecraft/profile/name/${ign}`, options)
+            .then(async resp => {
+                info = await resp.json()
+                console.log(resp.status)
+            })
+        sleep(10)
+    })
 }
 
 async function init() {
-
     console.log(figlet.textSync(`GameSniper`))
     const time = await fetch('https://worldtimeapi.org/api/ip')
-    //if (time.status != 200) return console.log(`Time API Unavailable, time offset unknown`)
-    //console.log(`You have a time offset of: ${Date.now() - Date(time.data.datetime)}ms`)
+    if (time.status != 200) {
+        console.log(`Time API Unavailable, time offset unknown`)
+    } else {
+        now = Date.now()
+        info = await time.json()
+        atom = new Date(info.datetime)
+        if (Math.abs(now - atom.getTime()) > 30) console.log(`You have a time offset of: ${now - atom.getTime()}ms`)
+    }
 
     global.accs = await setAccounts()
     accs.length > 20 ? accs.length = 20 : ''
