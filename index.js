@@ -1,11 +1,11 @@
 const figlet = require(`figlet`)
 const fetch = require(`node-fetch`)
-const ms = require(`ms`)
 const fs = require(`fs`)
 const readlineSync = require(`readline-sync`);
-const https = require(`https`);
 const cheerio = require(`cheerio`);
 const moment = require(`moment`)
+const colors = require(`colors`)
+const axios = require('axios');
 
 function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -27,138 +27,146 @@ async function setAccounts() {
     return ac
 }
 
-async function auth(accs) {
+async function authen(accs) {
     auth = []
-    const httpsAgent = new https.Agent({ name: "Minecraft", version: 1 });
     console.log()
     await accs.forEach(async ac => {
-        options = {
-            method: `POST`,
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username: ac.email, password: ac.pass }),
-            agent: httpsAgent
+        const json = {
+            agent: { name: "Minecraft", version: 1 }, username: ac.email, password: ac.pass
         }
-        fetch('https://authserver.mojang.com/authenticate', options).then(async au => {
-            if (au.status != 200) {
-                console.log(`Could not log into: ${ac.email}`);
-            } else {
-                info = await au.json()
-                let inf = { email: ac.email, token: info.accessToken, client: info.clientToken, date: Date.now(), reauth: false }
-                if (val(inf)) {
-                    options = {
-                        headers: { "Authorization": `Bearer ${info.accessToken}` },
-                    }
-                    fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
-                        infoo = await nc.json()
-                        infoo.nameChangeAllowed ? console.log(`Succesfully authenticated ${ac.email}`) : console.log(`${ac.email} cannot change name`)
-                        if (infoo.nameChangeAllowed) auth.push(inf)
-                    })
-                } else {
-                    console.log(`Could not authenticate: ${ac.email}`);
-                }
+        const req = await axios.post("https://authserver.mojang.com/authenticate", json, {
+            headers: {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36",
+                "Content-Type": "application/json"
             }
+        }).then(async au => {
+            if (au.status != 200) {
+                console.log(`Unavailable: ${ac.email}`.red);
+                auth.push({ reauth: true })
+            } else {
+                let inf = { email: ac.email, password: ac.pass, uuid: au.data.selectedProfile.id, token: au.data.accessToken, client: au.data.clientToken, reauth: false }
+                options = {
+                    headers: { "Authorization": `Bearer ${au.data.accessToken}` },
+                }
+                fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
+                    infoo = await nc.json()
+                    infoo.nameChangeAllowed ? console.log(`Authenticated: ${ac.email}`.green) : console.log(`Unavailable: ${ac.email}`.red)
+                    if (infoo.nameChangeAllowed) auth.push(inf)
+                })
+            }
+        }).catch(async err => {
+            console.log(`Unavailable: ${ac.email}`.red);
         })
     })
     return auth
 }
 
-async function val(info) {
-    options = {
-        method: `POST`,
-        body: JSON.stringify({ accessToken: info.token }),
-    }
-    const req = await fetch("https://authserver.mojang.com/validate", options);
-    if (req.status != 204) return false
-    return true
-}
-
-async function ping() {
-    const before = new Date();
-    const req = await fetch("https://api.mojang.com/");
-    const after = new Date();
-
-    if (req.status != 200) return null;
-    return (after - before);
-}
-
 async function getTime(name) {
     const $ = cheerio.load(await fetch(`https://namemc.com/search?q=${name}`).then(r => r.text()));
 
-    if ($('.my-1').text().match(/Available/) == null) { console.log(); console.log(`${name} is already taken, can't snipe it`); process.exit(); }
-    if ($('.my-1').text().match(/Available Later/) == null) { console.log(); console.log(`${name} is already available, can't snipe it`); process.exit(); }
+    if ($('.my-1').text().match(/Available/) == null) { console.log(); console.log(`${name} is already taken, can't snipe it`.red); process.exit(); }
+    if ($('.my-1').text().match(/Available Later/) == null) { console.log(); console.log(`${name} is already available, can't snipe it`.red); process.exit(); }
 
     return moment(new Date(Object.values(Object.values($('.countdown-timer'))[0].attribs)[1]), "ddd MMM D h:mm:ss [GMT]ZZ [(GMT]Z[)]")
 }
 
 async function preSnipe(auths) {
     console.log()
-    let pi = await ping()
-    pi ? console.log(`Current latency: ${pi}ms`) : ''
-    pi ? '' : pi = 0
-    console.log(`Starting to snipe at ${moment(new Date(snipeTime.valueOf() - delay)).format(`HH[:]mm[:]ss[.]SSS`)} in ${(snipeTime.valueOf() - Date.now() - delay) / 1000} seconds`)
-    await sleep(snipeTime.valueOf() - Date.now() - delay - pi)
+    console.log(`Name available at ${moment(new Date(snipeTime.valueOf() - delay)).format(`HH[:]mm[:]ss[.]SSS`)}, sniping in ${((snipeTime.valueOf() - delay) - Date.now()) / 1000} seconds`.cyan)
+    newAuths = []
+    console.log(auths.length)
+    await auths.forEach(async au => {
+        if (au.reauth) {
+            const json = {
+                agent: { name: "Minecraft", version: 1 }, username: au.email, password: au.pass
+            }
+            const req = await axios.post("https://authserver.mojang.com/authenticate", json, {
+                headers: {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36",
+                    "Content-Type": "application/json"
+                }
+            }).then(async info => {
+                if (info.status = 200) {
+                    let inf = { email: au.email, password: au.pass, uuid: info.data.selectedProfile.id, token: info.data.accessToken, client: info.data.clientToken, reauth: false }
+                    options = {
+                        headers: { "Authorization": `Bearer ${info.data.accessToken}` },
+                    }
+                    fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
+                        infoo = await nc.json()
+                        if (infoo.nameChangeAllowed) newAuths.push(inf)
+                    })
+                }
+            })
+        } else {
+            newAuths.push(au)
+        }
+    })
+    await sleep(2000)
+    if (newAuths.length === 0) { console.log(`None of these accounts are available to snipe at the moment`.red); console.log(`Try again in a few minutes`.red); process.exit() }
+    console.log(`${newAuths.length} accounts will be attempting to snipe...`.cyan)
+    await sleep(((snipeTime.valueOf() - delay) - Date.now()) - 15)
     console.log()
-    while (Date.now() < (snipeTime.valueOf() - delay - pi)) {
-        for (let i = 0; i < 3; i++) snipe(auths)
-        break
-    }
-    return
+    for (let i = 0; i < 3; i++) snipe(newAuths)
 }
 
 async function snipe(au) {
     au.forEach(ac => {
         options = {
             method: `POST`,
-            headers: {
-                "Authorization": `Bearer ${ac.token}`,
-                "Content-Type": "application/json"
-            }
+            body: JSON.stringify({ name: ign, password: ac.password }),
+            headers: { "Authorization": `Bearer ${ac.token}` },
         }
-        fetch(`https://api.minecraftservices.com/minecraft/profile/name/${ign}`, options)
+        let now = Date.now()
+        fetch(`https://api.mojang.com/user/profile/${ac.uuid}/name`, options)
             .then(async resp => {
                 info = await resp.json()
                 if (resp.status === 200) {
-                    console.log(`Name sniped! Email used: ${ac.email}`)
+                    console.log(`Name sniped! Email used: ${ac.email}`.green)
                 } else {
-                    resp.status != 429 ? console.log(`Failed snipe at ${moment(new Date()).format(`HH[:]mm[:]ss[.]SSS`)}`) : process.exit()
+                    console.log(resp)
+                    process.exit()
+                    resp.status != 429 ? console.log(`Failed snipe at ${moment(now).format(`HH[:]mm[:]ss[.]SSS`)}`.red) : process.exit()
                 }
             })
     })
 }
 
 async function init() {
-    console.log(figlet.textSync(`GameSniper`))
+    console.log(figlet.textSync(`GameSniper`).blue)
+
+    now = Date.now()
     const time = await fetch('https://worldtimeapi.org/api/ip')
-    if (time.status != 200) {
-        console.log(`Time API Unavailable, time offset unknown`)
-    } else {
-        now = Date.now()
+    if (time.status === 200) {
         info = await time.json()
         atom = new Date(info.datetime)
-        if (Math.abs(now - atom.getTime()) > 30) console.log(`You have a time offset of: ${now - atom.getTime()}ms`)
+        Math.abs((atom.valueOf() - now) < 30) ? console.log(`You have a time offset of ${atom.valueOf() - now}ms`.cyan) : ''
+        Math.abs((atom.valueOf() - now) < 30) ? console.log() : ''
+    } else {
+        console.log(`Time API is currently unavailable to calculate offset`.red)
+        console.log()
     }
 
     global.accs = await setAccounts()
-    if (accs.length > 20) { console.log(`More than 20 accounts was found, reducing to 20...`); console.log() }
+    if (accs.length > 20) { console.log(`More than 20 accounts was found, reducing to 20...`.cyan); console.log() }
     accs.length > 20 ? accs.length = 20 : ''
 
     global.ign = readlineSync.question(`What IGN would you like to snipe?\n> `);
-    if (!ign.match(/\w{3,16}/g)) { console.log(`${ign} is not a valid username`); process.exit(); }
+    if (!ign.match(/\w{3,16}/g)) { console.log(`${ign} is not a valid username`.red); process.exit(); }
 
     global.snipeTime = await getTime(ign)
 
     global.delay = readlineSync.question(`What delay would you like to have in ms?\n> `);
-    if (!parseInt(delay) || parseInt(delay) < 0) { console.log(`Couldn't read that delay`); process.exit() }
+    if (!parseInt(delay) || parseInt(delay) < 0) { console.log(`Couldn't read that delay`.red); process.exit() }
 
-    auth(accs).then(async auths => {
-        await auths.forEach(au => {
-            au.reauth = ((snipeTime.valueOf() - au.date) > 50000) ? true : false
-        })
-
-        await sleep(1000)
+    authDate = Date.now()
+    await authen(accs).then(async auths => {
+        await sleep(2000)
         console.log();
-        console.log(`Sniping ${ign} in ${moment().to(snipeTime, true)}`)
-        console.log(`Currently have ${auths.length} available accounts to snipe with`)
+        if (auths.length === 0) { console.log(`None of these accounts are available to snipe at the moment`.red); console.log(`Try again in a few minutes`.red); process.exit() }
+        console.log(`Sniping ${ign} in ${moment().to(snipeTime, true)}`.cyan)
+        auths.forEach(au => {
+            if ((snipeTime.valueOf() - authDate) > 50000) au.reauth = true;
+        })
         if (snipeTime.valueOf() - Date.now() < 30000) {
             preSnipe(auths)
         } else {

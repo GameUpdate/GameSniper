@@ -9,6 +9,7 @@
   "author": "Game#0005",
   "license": "ISC",
   "dependencies": {
+    "got": "^11.8.1",
     "readline-sync": "^1.4.10"
   }
 }
