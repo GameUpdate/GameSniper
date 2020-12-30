@@ -42,9 +42,9 @@ async function authen(accs) {
         }).then(async au => {
             if (au.status != 200) {
                 console.log(`Unavailable: ${ac.email}`.red);
-                auth.push({ reauth: true })
+                auth.push({ reauth: true, authTime: Date.now() })
             } else {
-                let inf = { email: ac.email, password: ac.pass, uuid: au.data.selectedProfile.id, token: au.data.accessToken, client: au.data.clientToken, reauth: false }
+                let inf = { email: ac.email, password: ac.pass, uuid: au.data.selectedProfile.id, token: au.data.accessToken, client: au.data.clientToken, reauth: false, authTime: Date.now() }
                 options = {
                     headers: { "Authorization": `Bearer ${au.data.accessToken}` },
                 }
@@ -56,6 +56,7 @@ async function authen(accs) {
             }
         }).catch(async err => {
             console.log(`Unavailable: ${ac.email}`.red);
+            auth.push({ reauth: true, authTime: Date.now() })
         })
     })
     return auth
@@ -74,7 +75,6 @@ async function preSnipe(auths) {
     console.log()
     console.log(`Name available at ${moment(new Date(snipeTime.valueOf() - delay)).format(`HH[:]mm[:]ss[.]SSS`)}, sniping in ${((snipeTime.valueOf() - delay) - Date.now()) / 1000} seconds`.cyan)
     newAuths = []
-    console.log(auths.length)
     await auths.forEach(async au => {
         if (au.reauth) {
             const json = {
@@ -96,13 +96,13 @@ async function preSnipe(auths) {
                         if (infoo.nameChangeAllowed) newAuths.push(inf)
                     })
                 }
-            })
+            }).catch(async err => { })
         } else {
             newAuths.push(au)
         }
     })
     await sleep(2000)
-    if (newAuths.length === 0) { console.log(`None of these accounts are available to snipe at the moment`.red); console.log(`Try again in a few minutes`.red); process.exit() }
+    if (newAuths.length === 0) { console.log(`None of your accounts are available to snipe at the moment`.red); console.log(`Try again in a few minutes`.red); process.exit() }
     console.log(`${newAuths.length} accounts will be attempting to snipe...`.cyan)
     await sleep(((snipeTime.valueOf() - delay) - Date.now()) - 15)
     console.log()
@@ -158,14 +158,12 @@ async function init() {
     global.delay = readlineSync.question(`What delay would you like to have in ms?\n> `);
     if (!parseInt(delay) || parseInt(delay) < 0) { console.log(`Couldn't read that delay`.red); process.exit() }
 
-    authDate = Date.now()
     await authen(accs).then(async auths => {
         await sleep(2000)
         console.log();
-        if (auths.length === 0) { console.log(`None of these accounts are available to snipe at the moment`.red); console.log(`Try again in a few minutes`.red); process.exit() }
         console.log(`Sniping ${ign} in ${moment().to(snipeTime, true)}`.cyan)
         auths.forEach(au => {
-            if ((snipeTime.valueOf() - authDate) > 50000) au.reauth = true;
+            if ((snipeTime.valueOf() - au.authTime) > 50000) au.reauth = true;
         })
         if (snipeTime.valueOf() - Date.now() < 30000) {
             preSnipe(auths)
