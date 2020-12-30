@@ -44,14 +44,24 @@ async function authen(accs) {
                 console.log(`Unavailable: ${ac.email}`.red);
                 auth.push({ reauth: true, authTime: Date.now() })
             } else {
-                let inf = { email: ac.email, password: ac.pass, uuid: au.data.selectedProfile.id, token: au.data.accessToken, client: au.data.clientToken, reauth: false, authTime: Date.now() }
                 options = {
                     headers: { "Authorization": `Bearer ${au.data.accessToken}` },
                 }
-                fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
-                    infoo = await nc.json()
-                    infoo.nameChangeAllowed ? console.log(`Authenticated: ${ac.email}`.green) : console.log(`Unavailable: ${ac.email}`.red)
-                    if (infoo.nameChangeAllowed) auth.push(inf)
+                fetch('https://api.mojang.com/user/security/challenges', options).then(async ch => {
+                    ques = await ch.json()
+                    if (ques.length === 0) {
+                        let inf = { email: ac.email, password: ac.pass, uuid: au.data.selectedProfile.id, token: au.data.accessToken, client: au.data.clientToken, reauth: false, authTime: Date.now() }
+                        options = {
+                            headers: { "Authorization": `Bearer ${au.data.accessToken}` },
+                        }
+                        fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
+                            infoo = await nc.json()
+                            infoo.nameChangeAllowed ? console.log(`Authenticated: ${ac.email}`.green) : console.log(`Unavailable: ${ac.email}`.red)
+                            if (infoo.nameChangeAllowed) auth.push(inf)
+                        })
+                    } else {
+                        console.log(`Unusable: ${ac.email}`.red);
+                    }
                 })
             }
         }).catch(async err => {
@@ -75,6 +85,7 @@ async function preSnipe(auths) {
     console.log()
     console.log(`Name available at ${moment(new Date(snipeTime.valueOf() - delay)).format(`HH[:]mm[:]ss[.]SSS`)}, sniping in ${((snipeTime.valueOf() - delay) - Date.now()) / 1000} seconds`.cyan)
     newAuths = []
+    reauths > 0 ? console.log(`${reauths} accounts timed out, attempting to reauthenticate them...`.cyan) : ''
     await auths.forEach(async au => {
         if (au.reauth) {
             const json = {
@@ -87,13 +98,21 @@ async function preSnipe(auths) {
                 }
             }).then(async info => {
                 if (info.status = 200) {
-                    let inf = { email: au.email, password: au.pass, uuid: info.data.selectedProfile.id, token: info.data.accessToken, client: info.data.clientToken, reauth: false }
                     options = {
-                        headers: { "Authorization": `Bearer ${info.data.accessToken}` },
+                        headers: { "Authorization": `Bearer ${au.data.accessToken}` },
                     }
-                    fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
-                        infoo = await nc.json()
-                        if (infoo.nameChangeAllowed) newAuths.push(inf)
+                    fetch('https://api.mojang.com/user/security/challenges', options).then(async ch => {
+                        ques = await ch.json()
+                        if (ques.length === 0) {
+                            let inf = { email: ac.email, password: ac.pass, uuid: au.data.selectedProfile.id, token: au.data.accessToken, client: au.data.clientToken, reauth: false, authTime: Date.now() }
+                            options = {
+                                headers: { "Authorization": `Bearer ${au.data.accessToken}` },
+                            }
+                            fetch('https://api.minecraftservices.com/minecraft/profile/namechange', options).then(async nc => {
+                                infoo = await nc.json()
+                                if (infoo.nameChangeAllowed) newAuths.push(inf)
+                            })
+                        }
                     })
                 }
             }).catch(async err => { })
@@ -139,7 +158,7 @@ async function init() {
     if (time.status === 200) {
         info = await time.json()
         atom = new Date(info.datetime)
-        Math.abs((atom.valueOf() - now) < 30) ? console.log(`You have a time offset of ${atom.valueOf() - now}ms`.cyan) : ''
+        Math.abs((atom.valueOf() - now) < 30) ? console.log(`Your clock is out of sync by ${atom.valueOf() - now}ms`.cyan) : ''
         Math.abs((atom.valueOf() - now) < 30) ? console.log() : ''
     } else {
         console.log(`Time API is currently unavailable to calculate offset`.red)
@@ -160,10 +179,11 @@ async function init() {
 
     await authen(accs).then(async auths => {
         await sleep(2000)
-        console.log();
-        console.log(`Sniping ${ign} in ${moment().to(snipeTime, true)}`.cyan)
+        console.log()
+        console.log(`Sniping ${ign} in ~${Math.round(((snipeTime.valueOf() - delay) - Date.now()) / 1000)} seconds`.cyan)
+        global.reauths = 0
         auths.forEach(au => {
-            if ((snipeTime.valueOf() - au.authTime) > 50000) au.reauth = true;
+            if ((snipeTime.valueOf() - au.authTime) > 50000) { au.reauth = true; reauths++ }
         })
         if (snipeTime.valueOf() - Date.now() < 30000) {
             preSnipe(auths)
